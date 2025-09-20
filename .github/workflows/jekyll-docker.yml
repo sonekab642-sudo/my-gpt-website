@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<title>CloudGPT - Gemini</title>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: #ece5dd;
+  }
+  header {
+    background: #075e54;
+    color: white;
+    padding: 10px 15px;
+    font-size: 18px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #status {
+    font-size: 18px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+  }
+  #status span { margin-right: 6px; }
+
+  #chatbox {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: #ccc transparent;
+  }
+  #chatbox::-webkit-scrollbar { width: 6px; }
+  #chatbox::-webkit-scrollbar-thumb {
+    background: #bbb;
+    border-radius: 3px;
+  }
+
+  .msg {
+    max-width: 70%;
+    margin: 6px 0;
+    padding: 8px 12px;
+    border-radius: 18px;
+    line-height: 1.4;
+    word-break: break-word;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.2);
+    position: relative;
+  }
+  .user { background: #dcf8c6; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .bot  { background: #ffffff; align-self: flex-start; border-bottom-left-radius: 4px; }
+
+  .timestamp {
+    font-size: 10px;
+    color: #777;
+  }
+  .meta {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .copyBtn {
+    font-size: 11px;
+    background: #eee;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 6px;
+    cursor: pointer;
+    display: none;
+  }
+  .bot:hover .copyBtn { display: inline-block; }
+
+  footer {
+    display: flex;
+    padding: 10px;
+    background: #f0f0f0;
+    align-items: center;
+    gap: 4px;
+  }
+  textarea {
+    flex: 1;
+    resize: none;
+    padding: 6px 14px;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+    font-size: 14px;
+    outline: none;
+    min-height: 40px;
+    max-height: 140px;
+    overflow-y: auto;
+  }
+  .iconBtn {
+    background: #128c7e;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 22px;
+  }
+  .iconBtn:hover { background: #0d6f63; }
+  .clearBtn {
+    background: #d9534f;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+    color: white;
+    cursor: pointer;
+  }
+  .clearBtn:hover { background: #b52b27; }
+  #imageInput { display: none; }
+  img.msg-image {
+    max-width: 200px;
+    border-radius: 10px;
+    margin-top: 6px;
+    display:block;
+    cursor: pointer;
+  }
+
+  /* Zoom overlay */
+  #imgModal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left:0; top:0;
+    width:100%; height:100%;
+    background: rgba(0,0,0,0.8);
+    justify-content: center;
+    align-items: center;
+  }
+  #imgModal img {
+    max-width: 90%;
+    max-height: 90%;
+    border-radius: 10px;
+  }
+
+  /* Typing dots */
+  .typing-dots { display: inline-block; }
+  .typing-dots span {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    margin: 0 2px;
+    background: #555;
+    border-radius: 50%;
+    opacity: 0.3;
+    animation: blink 1.4s infinite;
+  }
+  .typing-dots span:nth-child(1) { animation-delay: 0s; }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink {
+    0% { opacity: 0.3; }
+    50% { opacity: 1; }
+    100% { opacity: 0.3; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span id="status" class="disconnected">Disconnected 
+    <img src="https://cdn-icons-png.flaticon.com/512/753/753345.png" style="width:16px;height:16px;margin-left:4px;">
+  </span>
+  <button class="clearBtn" onclick="clearHistory()">Clear History</button>
+</header>
+
+<div id="chatbox"></div>
+
+<footer>
+  <button class="iconBtn" onclick="document.getElementById('imageInput').click()">
+    <span class="material-icons">attach_file</span>
+  </button>
+  <input type="file" id="imageInput" accept="image/*">
+  <textarea id="userInput" rows="1" placeholder="এখানে লিখুন..."></textarea>
+  <button class="iconBtn" onclick="sendMessage()">
+    <span class="material-icons">send</span>
+  </button>
+</footer>
+
+<!-- image modal -->
+<div id="imgModal" onclick="this.style.display='none'">
+  <img id="modalImg" src="">
+</div>
+
+<script>
+const API_KEY = "AIzaSyBltW1uLp1CuHa_G9igYqFyzlsIt51pYAY";
+
+/* IndexedDB setup */
+let db;
+let request = indexedDB.open("CloudGPT_DB", 1);
+request.onupgradeneeded = function(e){
+  db = e.target.result;
+  if(!db.objectStoreNames.contains("messages")){
+    db.createObjectStore("messages", { keyPath: "id", autoIncrement:true });
+  }
+};
+request.onsuccess = function(e){ db = e.target.result; renderChat(); };
+request.onerror = function(e){ console.error("IndexedDB Error:", e.target.error); };
+
+function saveMessage(msg){ if(!db) return; let tx = db.transaction("messages","readwrite"); tx.objectStore("messages").add(msg); }
+function getAllMessages(callback){ if(!db) return callback([]); let tx = db.transaction("messages","readonly"); let store = tx.objectStore("messages"); let all = store.getAll(); all.onsuccess = ()=>callback(all.result||[]); }
+function updateMessage(msg){ if(!db) return; let tx = db.transaction("messages","readwrite"); tx.objectStore("messages").put(msg); }
+
+/* render chat */
+function renderChat(){
+  getAllMessages(messages=>{
+    const chatbox = document.getElementById("chatbox");
+    chatbox.innerHTML = "";
+
+    messages.forEach(msg=>{
+      const div = document.createElement("div");
+      div.className = "msg " + (msg.role==="user" ? "user" : "bot");
+
+      if(msg.text) {
+        const p = document.createElement("div");
+        p.innerHTML = msg.text; 
+        div.appendChild(p);
+      }
+      if(msg.image){
+        const img = document.createElement("img");
+        img.className = "msg-image";
+        img.src = msg.image;
+        img.onclick = ()=>{ document.getElementById("modalImg").src = img.src; document.getElementById("imgModal").style.display="flex"; };
+        div.appendChild(img);
+      }
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+
+      if(msg.role==="model"){
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copyBtn";
+        copyBtn.innerText = "Copy";
+        copyBtn.onclick = ()=>navigator.clipboard.writeText(msg.text||"");
+        meta.appendChild(copyBtn);
+      }
+
+      const ts = document.createElement("div");
+      ts.className = "timestamp";
+      ts.innerText = new Date(msg.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      meta.appendChild(ts);
+
+      div.appendChild(meta);
+      chatbox.appendChild(div);
+    });
+    chatbox.scrollTo({ top: chatbox.scrollHeight, behavior:"smooth" });
+  });
+}
+
+/* convert file -> base64 */
+function toBase64(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = ()=>resolve(reader.result);
+    reader.onerror = reject;
+  });
+}
+
+/* typing animation */
+function typeWriterEffect(element, text, speed = 10, msgObj = null) {
+  let i = 0;
+  element.innerHTML = "";
+  let timer = setInterval(() => {
+    element.innerHTML += text.charAt(i);
+    i++;
+    if (i >= text.length) {
+      clearInterval(timer);
+      if (msgObj) {
+        msgObj.text = text;
+        updateMessage(msgObj);
+      }
+    }
+  }, speed);
+}
+
+/* send message */
+async function sendMessage(){
+  const input = document.getElementById("userInput");
+  const fileInput = document.getElementById("imageInput");
+  const userText = input.value.trim();
+  if(!userText && fileInput.files.length === 0) return;
+
+  let userMsg = { role: "user", createdAt: Date.now() };
+  if(userText) userMsg.text = userText;
+
+  if(fileInput.files.length > 0){
+    const file = fileInput.files[0];
+    const base64 = await toBase64(file);
+    userMsg.image = base64;
+    fileInput.value = "";
+    if(!userText) userMsg.text = `<img src="https://cdn-icons-png.flaticon.com/512/724/724933.png" style="width:16px;height:16px;vertical-align:middle;"> ছবি পাঠানো হয়েছে`;
+  }
+
+  saveMessage(userMsg);
+  renderChat();
+  input.value = "";
+
+  // ✅ অপেক্ষা করুন + ডট অ্যানিমেশন
+  let botMsg = { 
+    role: "model", 
+    text: `অপেক্ষা করুন <span class="typing-dots"><span></span><span></span><span></span></span>`, 
+    createdAt: Date.now() 
+  };
+  saveMessage(botMsg);
+  renderChat();
+
+  getAllMessages(async (messages) => {
+    let contents = messages.map(m=>{
+      let parts=[];
+      if(m.text) parts.push({ text: m.text.replace(/<[^>]*>?/gm, '') }); 
+      if(m.image){
+        let mimeMatch = m.image.match(/^data:(.*);base64,/);
+        let mimeType = mimeMatch ? mimeMatch[1] : "image/png";
+        parts.push({ inline_data:{ mime_type: mimeType, data: m.image.split(",")[1] } });
+      }
+      return { role: m.role, parts: parts };
+    });
+
+    try{
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+API_KEY, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ contents: contents })
+      });
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("\n") 
+        || `<span style="color:red;font-weight:bold;">Disconnected</span>
+            <img src="https://cdn-icons-png.flaticon.com/512/753/753345.png" style="width:14px;height:14px;vertical-align:middle;margin-left:4px;">`;
+
+      getAllMessages(all=>{
+        let lastBot = all.filter(m=>m.role==="model").slice(-1)[0];
+        if(lastBot){
+          lastBot.text = text;
+          updateMessage(lastBot);
+          renderChat();
+
+          // apply typing effect
+          setTimeout(()=>{
+            const lastDiv = document.querySelector("#chatbox .msg.bot:last-child div:first-child");
+            if(lastDiv) typeWriterEffect(lastDiv, text, 10, lastBot);
+          },100);
+        }
+      });
+    }catch(err){
+      getAllMessages(all=>{
+        let lastBot = all.filter(m=>m.role==="model").slice(-1)[0];
+        if(lastBot){
+          lastBot.text = `<span style="color:red;font-weight:bold;">Error</span>: `+(err.message||err);
+          updateMessage(lastBot);
+          renderChat();
+        }
+      });
+    }
+  });
+}
+
+/* clear */
+function clearHistory(){
+  if(!db) return;
+  let tx = db.transaction("messages","readwrite");
+  tx.objectStore("messages").clear();
+  document.getElementById("chatbox").innerHTML = "";
+}
+
+/* Connection check */
+async function checkConnection(){
+  const statusEl = document.getElementById("status");
+  try{
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?key="+API_KEY);
+    if(res.ok){
+      statusEl.innerHTML = `<span style="color:#0f0;">Connected</span>
+      <img src="https://cdn-icons-png.flaticon.com/512/845/845646.png" style="width:16px;height:16px;margin-left:6px;">`;
+    } else { throw new Error("fail"); }
+  }catch{
+    statusEl.innerHTML = `<span style="color:#f00;">Disconnected</span>
+    <img src="https://cdn-icons-png.flaticon.com/512/753/753345.png" style="width:16px;height:16px;margin-left:6px;">`;
+  }
+}
+checkConnection();
+setInterval(checkConnection, 30000);
+</script>
+</body>
+</html
